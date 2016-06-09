@@ -8,6 +8,7 @@ use ::TdsResult;
 #[repr(u8)]
 #[derive(Clone, Debug)]
 pub enum RpcProcId {
+    SpExecuteSql = 10,
     SpPrepare = 11,
     SpExecute = 12,
     SpUnprepare = 15,

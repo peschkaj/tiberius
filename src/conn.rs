@@ -7,7 +7,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::ops::Deref;
 
 use protocol::*;
-use stmt::{StatementInternal, QueryResult, PreparedStatement};
+use stmt::{StatementInternal, QueryResult, PreparedStatement, ParameterizedStatement};
 use ::{TdsResult, TdsError};
 
 #[derive(Debug, PartialEq)]
@@ -170,6 +170,20 @@ impl<'c, S: 'c + TargetStream> Connection<'c, S> {
 
     pub fn prepare<L>(&'c self, sql: L) -> TdsResult<PreparedStatement<'c, S>> where L: Into<Cow<'c, str>> {
         Ok(try!(PreparedStatement::new(self.clone(), sql.into())))
+    }
+
+    /// Creates a parameterized SQL statement to be used with `sp_executesql`
+    /// See [sp_executesql](https://msdn.microsoft.com/en-us/library/ms188001.aspx)
+    /// for additional information.
+    pub fn parameterized<L, K>(&'c self,
+                               sql: L,
+                               parameter_meta: K)
+                               -> TdsResult<ParameterizedStatement<'c, S>>
+        where L: Into<Cow<'c, str>>, K: Into<Option<Cow<'c, str>>>
+    {
+        Ok(try!(ParameterizedStatement::new(self.clone(),
+                                            sql.into(),
+                                            parameter_meta.into())))
     }
 }
 

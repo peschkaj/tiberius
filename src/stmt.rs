@@ -304,3 +304,76 @@ impl<'a, S: 'a + TargetStream> PreparedStatement<'a, S> {
         handle_query_packet(packet, self.stmt.clone())
     }
 }
+
+pub struct ParameterizedStatement<'a, S: 'a + TargetStream> {
+    conn: Connection<'a, S>,
+    sql: Cow<'a, str>,
+    stmt: Rc<RefCell<StatementInfo>>,
+    parameter_meta: Option<Cow<'a, str>>,
+    parameters: Option<&'a [&'a ToColumnType]>,
+}
+
+impl<'a, S: 'a + TargetStream> ParameterizedStatement<'a, S> {
+    pub fn new(conn: Connection<'a, S>,
+               sql: Cow<'a, str>,
+               parameter_meta: Option<Cow<'a, str>>)
+               -> TdsResult<ParameterizedStatement<'a, S>>
+    {
+        Ok(ParameterizedStatement {
+            conn: conn,
+            sql: sql,
+            parameter_meta: parameter_meta,
+            stmt: Rc::new(RefCell::new(StatementInfo::new())),
+            parameters: None,
+        })
+    }
+
+    fn do_internal_exec(&self, param_meta: &str, params: &[&ToColumnType]) -> TdsResult<()> {
+        let mut params_meta = vec![
+            RpcParamData {
+                name: Cow::Borrowed("stmt"),
+                status_flags: 0,
+                value: ColumnType::String(self.sql.clone()),
+            },
+            RpcParamData {
+                name: Cow::Borrowed("params"),
+                status_flags: 0,
+                value: ColumnType::String(Cow::Borrowed(param_meta.clone())),
+            }
+        ];
+
+        for (i, param) in params.iter().enumerate() {
+            params_meta.push(RpcParamData {
+                name: Cow::Owned(format!("@P{}", i+1)),
+                status_flags: 0,
+                value: param.to_column_type(),
+            });
+        }
+
+        let rpc_req = RpcRequestData {
+            proc_id: RpcProcIdValue::Id(RpcProcId::SpExecuteSql),
+            flags: 0,
+            params: params_meta,
+        };
+
+        let rpc_packet = Packet::RpcRequest(&rpc_req);
+        let mut conn = self.conn.borrow_mut();
+
+        try!(conn.send_packet(&rpc_packet));
+        Ok(())
+    }
+
+    // TODO: `params` needs to be name value pairs in the form of "@param": "whatever"
+    /* TODO: need to add a new method to `Connection` in conn.rs at line 158ish.
+             This method should create a parameterized statement and accept sql and parameter metadata.
+     */
+    pub fn query<'b>(&self, param_meta: &str, params: &[&ToColumnType]) -> TdsResult<QueryResult<'b>> {
+        let packet;
+        {
+            let mut conn = self.conn.borrow_mut();
+            packet = try!(try!(conn.opts.stream.read_message()).into_stmt_token_stream(&mut self.stmt.borrow_mut()));
+
+            unimplemented!();
+        }
+    }
+}
